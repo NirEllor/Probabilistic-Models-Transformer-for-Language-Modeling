@@ -6,6 +6,9 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 from dataset import DataHandler
 
+np.random.seed(42)
+torch.manual_seed(42)
+
 
 class NewGELU(nn.Module):
     """

@@ -1,6 +1,10 @@
+
 import torch
 import torch.nn as nn
 from dataset import EuropeDataset
+
+np.random.seed(42)
+torch.manual_seed(42)
 
 def normalize_tensor(tensor, d):
     """

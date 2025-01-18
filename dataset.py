@@ -3,6 +3,8 @@ import pandas as pd
 from torch.utils.data import Dataset
 import numpy as np
 
+np.random.seed(42)
+torch.manual_seed(42)
 
 class EuropeDataset(Dataset):
     def __init__(self, csv_file):
