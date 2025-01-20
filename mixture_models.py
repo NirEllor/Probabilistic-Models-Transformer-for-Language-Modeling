@@ -1,9 +1,11 @@
+import time
 
 import torch
 import torch.nn as nn
 from dataset import EuropeDataset
+from setuptools.config.expand import StaticModule
 
-np.random.seed(42)
+# np.random.seed(42)
 torch.manual_seed(42)
 
 def normalize_tensor(tensor, d):
@@ -31,10 +33,10 @@ class GMM(nn.Module):
         Args:
             n_components (int): Number of Gaussian components.
         """
-        super().__init__()        
+        super().__init__()
         self.n_components = n_components
 
-        # Mixture weights (logits to be softmaxed)
+        # Mixture weights (logits to be soft maxed)
         self.weights = nn.Parameter(torch.randn(n_components))
 
         # Means of the Gaussian components (n_components x 2 for 2D data)
@@ -73,7 +75,6 @@ class GMM(nn.Module):
         log_likelihood = torch.logsumexp(log_probs, dim=1)  # Shape: (n_samples,)
 
         return log_likelihood
-
     def loss_function(self, log_likelihood):
         """
         Compute the negative log-likelihood loss.
@@ -140,7 +141,7 @@ class UMM(nn.Module):
         super().__init__()        
         self.n_components = n_components
 
-        # Mixture weights (logits to be softmaxed)
+        # Mixture weights (logits to be soft maxed)
         self.weights = nn.Parameter(torch.randn(n_components))
 
         # Center value of the uniform components (n_components x 2 for 2D data)
@@ -181,7 +182,6 @@ class UMM(nn.Module):
         log_likelihood = torch.logsumexp(log_probs, dim=1)  # Shape: (n_samples,)
 
         return log_likelihood
-
     def loss_function(self, log_likelihood):
         """
         Compute the negative log-likelihood loss.
@@ -239,6 +239,8 @@ if __name__ == "__main__":
     train_dataset = EuropeDataset('train.csv')
     test_dataset = EuropeDataset('test.csv')
 
+    num_labels = train_dataset.get_number_of_labels()
+
     batch_size = 4096
     num_epochs = 50
     # Use Adam optimizer
@@ -254,27 +256,41 @@ if __name__ == "__main__":
     #### YOUR CODE GOES HERE ####
 
     # Initialize the UMM model
-    n_components = 3  # Set the number of components as needed
-    umm = UMM(n_components)
+    components_options = [num_labels, 1, 5, 10]
 
     # Set the learning rate
     learning_rate = 0.001
 
     # Use the Adam optimizer
-    optimizer = torch.optim.Adam(umm.parameters(), lr=learning_rate)
 
     # Training loop
     loss = None
-    for epoch in range(num_epochs):
-        for batch in train_loader:
-            features, _ = batch  # Assuming labels are not needed
-            log_likelihood = umm(features)
-            loss = umm.loss_function(log_likelihood)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-        print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f}")
-
+    for components in components_options:
+        total_loss = 0.0
+        print(f"------------Number of components: {components}-----------------")
+        gmm = GMM(components)
+        optimizer = torch.optim.Adam(gmm.parameters(), lr=learning_rate)
+        for epoch in range(num_epochs):
+            epoch_loss = 0.0
+            number_of_batches = 0
+            batch_time = None
+            for batch in train_loader:
+                start_time = time.time()
+                features, _ = batch  # Assuming labels are not needed
+                epoch_log_likelihood = gmm(features)
+                loss = gmm.loss_function(epoch_log_likelihood)
+                optimizer.zero_grad()
+                loss.backward()
+                epoch_loss += loss.item()
+                optimizer.step()
+                number_of_batches += 1
+                end_time = time.time()
+                batch_time = end_time - start_time
+            epoch_loss /= number_of_batches
+            total_loss += epoch_loss
+            print(f"Epoch {epoch + 1}/{num_epochs}, Time: {batch_time:.3f}s, "
+                  f"Loss: {loss.item():.4f}")
+        total_loss /= num_epochs
+        print(f"Loss for {components} components: {total_loss}")
 
 

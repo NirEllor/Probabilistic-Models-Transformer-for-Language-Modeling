@@ -19,12 +19,10 @@ class EuropeDataset(Dataset):
         self.features = torch.from_numpy(self.data_frame.iloc[:, 1:3].values).float()
         self.labels = torch.from_numpy(self.data_frame.iloc[:, 3].values).long()
 
-        # Compute mean and standard deviation
-        # self.mean = self.features.  mean(dim=0)
-        # self.std = self.features.std(dim=0)
 
-        # Normalize features
-        # self.features = (self.features - self.mean) / self.std
+    def get_number_of_labels(self):
+        """Returns the number of unique labels in the dataset."""
+        return len(torch.unique(self.labels))
 
     def __len__(self):
         """Returns the total number of samples in the dataset."""
