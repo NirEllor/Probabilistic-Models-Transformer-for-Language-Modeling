@@ -20,11 +20,11 @@ class EuropeDataset(Dataset):
         self.labels = torch.from_numpy(self.data_frame.iloc[:, 3].values).long()
 
         # Compute mean and standard deviation
-        self.mean = self.features.  mean(dim=0)
-        self.std = self.features.std(dim=0)
+        # self.mean = self.features.  mean(dim=0)
+        # self.std = self.features.std(dim=0)
 
         # Normalize features
-        self.features = (self.features - self.mean) / self.std
+        # self.features = (self.features - self.mean) / self.std
 
     def __len__(self):
         """Returns the total number of samples in the dataset."""
