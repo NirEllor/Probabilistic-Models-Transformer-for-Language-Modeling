@@ -328,7 +328,7 @@ def plot_loss_from_file(file_path, n_components):
         plt.xlabel('Number of Components')
         plt.ylabel('Loss')
         plt.title('Train and Test Loss vs. Number of Components')
-        # plt.legend()
+        plt.legend()
         plt.grid(True)
         plt.show()
 
@@ -384,14 +384,15 @@ def plot_conditional_samples(gmm_model, n_samples_per_component=100, num_compone
     plt.show()
 
 
-def plot_log_likelihood(_train_log_likelihood, _test_log_likelihood, _num_epochs):
+def plot_log_likelihood(_train_log_likelihood, _test_log_likelihood, _num_epochs, _initialize_with_means=False):
     """
     Plot the training and testing mean log likelihood vs. epoch.
 
     Args:
-        _train_log_likelihood (list): List of mean log likelihoods for each epoch during training.
-        _test_log_likelihood (list): List of mean log likelihoods for each epoch during testing.
-        _num_epochs (int): Total number of epochs.
+        :param _train_log_likelihood: List of mean log likelihoods for each epoch during training.
+        :param _test_log_likelihood: List of mean log likelihoods for each epoch during testing.
+        :param _num_epochs: Total number of epochs.
+        :param _initialize_with_means: if weights were initialized with means.
     """
     epochs = list(range(1, _num_epochs + 1))  # Epoch numbers
 
@@ -400,8 +401,12 @@ def plot_log_likelihood(_train_log_likelihood, _test_log_likelihood, _num_epochs
     plt.plot(epochs, _test_log_likelihood, label="Testing Log-Likelihood", marker='o')
     plt.xlabel("Epoch")
     plt.ylabel("Mean Log-Likelihood")
-    plt.title("Training and Testing Mean Log-Likelihood vs. Epoch")
-    # plt.legend()
+    if _initialize_with_means:
+        plt.title(f"Training and Testing Mean Log-Likelihood vs. Epoch (initialize_with_means)")
+    else:
+        plt.title(f"Training and Testing Mean Log-Likelihood vs. Epoch (random initialization)")
+
+    plt.legend()
     plt.grid(True)
     plt.show()
 
@@ -541,7 +546,7 @@ if __name__ == "__main__":
                     plot_gmm_samples(gmm, 1000, num_labels,True, epoch + 1)
                     plot_conditional_samples(gmm, 100, num_labels, True, epoch + 1)
                     if epoch + 1 == num_epochs:
-                        plot_log_likelihood(train_log_likelihood, test_log_likelihood, epoch + 1)
+                        plot_log_likelihood(train_log_likelihood, test_log_likelihood, epoch + 1, _initialize_with_means=initialize_with_means)
 
             # Average the losses across epochs
             train_total_loss /= num_epochs
@@ -554,15 +559,15 @@ if __name__ == "__main__":
             loss_train_test[index][1] = test_total_loss
 
 
-            torch.save(gmm.state_dict(), 'gmm_model.pt')
-
-            plot_gmm_samples(gmm, 1000, components)
-            plot_conditional_samples(gmm, 100, components)
+            # torch.save(gmm.state_dict(), 'gmm_model.pt')
+            if not initialize_with_means:
+                plot_gmm_samples(gmm, 1000, components)
+                plot_conditional_samples(gmm, 100, components)
 
         loss_train_test_transposed = loss_train_test.transpose(0, 1)
         print(loss_train_test)
         torch.save(loss_train_test, 'loss_train_test.pt')
-        plot_loss_from_file('loss_train_test.pt', [1, 5, 10, 'num_labels'])
+        # plot_loss_from_file('loss_train_test.pt', [1, 5, 10, 'num_labels'])
 
 
 
