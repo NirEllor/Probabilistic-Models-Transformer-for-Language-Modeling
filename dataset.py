@@ -6,6 +6,24 @@ import numpy as np
 np.random.seed(42)
 torch.manual_seed(42)
 
+
+def normalize_tensor(tensor, d):
+    """
+    Normalize the input tensor along the specified axis to have a mean of 0 and a std of 1.
+
+    Parameters:
+        tensor (torch.Tensor): Input tensor to normalize.
+        d (int): Axis along which to normalize.
+
+    Returns:
+        torch.Tensor: Normalized tensor.
+    """
+    mean = torch.mean(tensor, dim=d, keepdim=True)
+    std = torch.std(tensor, dim=d, keepdim=True)
+    normalized = (tensor - mean) / std
+    return normalized
+
+
 class EuropeDataset(Dataset):
     def __init__(self, csv_file):
         """
@@ -18,6 +36,9 @@ class EuropeDataset(Dataset):
         # Assuming the first two columns are the features and the third is the label
         self.features = torch.from_numpy(self.data_frame.iloc[:, 1:3].values).float()
         self.labels = torch.from_numpy(self.data_frame.iloc[:, 3].values).long()
+
+        self.features = normalize_tensor(self.features, d=0)
+
 
 
     def get_number_of_labels(self):

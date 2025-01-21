@@ -1,28 +1,15 @@
-import time
+# import time
 
 import torch.nn as nn
+import dataset
 from dataset import EuropeDataset
 import torch
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
+import numpy as np
 
-# np.random.seed(42)
-torch.manual_seed(42)
-
-def normalize_tensor(tensor, d):
-    """
-    Normalize the input tensor along the specified axis to have a mean of 0 and a std of 1.
-    
-    Parameters:
-        tensor (torch.Tensor): Input tensor to normalize.
-        d (int): Axis along which to normalize.
-    
-    Returns:
-        torch.Tensor: Normalized tensor.
-    """
-    mean = torch.mean(tensor, dim=d, keepdim=True)
-    std = torch.std(tensor, dim=d, keepdim=True)
-    normalized = (tensor - mean) / std
-    return normalized
+NUMBER_OF_FEATURES = 2
+EPOCHS = [1, 10, 20, 30, 40, 50]
 
 
 def loss_function_umm(log_likelihood):
@@ -286,6 +273,138 @@ class UMM(nn.Module):
         return samples
 
 
+def plot_gmm_samples(gmm_model, n_samples=1000, n_components=1, is_num_labels=False, epoch=1):
+    """
+    Display a scatter plot with samples from the given GMM.
+
+    Args:
+        gmm (GMM): The Gaussian Mixture Model object.
+        n_samples (int): Number of samples to generate for the scatter plot.
+        :param epoch: epoch number
+        :param is_num_labels: if the number of labels is the number of components
+        :param gmm_model: The model.
+        :param n_samples: Number of samples to generate.
+        :param n_components: number of components
+    """
+    # Generate samples from the GMM using the sample function
+    samples = gmm_model.sample(n_samples)  # Shape: (n_samples, 2)
+
+    # Convert samples to numpy for plotting
+    samples = samples.detach().numpy()
+
+    # Plot the samples
+    plt.figure(figsize=(8, 6))
+    plt.scatter(samples[:, 0], samples[:, 1], alpha=0.6, edgecolors='k')
+    if is_num_labels:
+        plt.title(f"Epoch {epoch}: Scatter Plot of {n_samples} Samples from {n_components} components GMM")
+    else:
+        plt.title(f"Scatter Plot of {n_samples} Samples from {n_components} components GMM")
+    plt.xlabel("Feature 1")
+    plt.ylabel("Feature 2")
+    plt.grid(True)
+    plt.show()
+
+
+def plot_loss_from_file(file_path, n_components):
+    """
+    Load the loss tensor from a file and plot the train and test losses.
+
+    Args:
+        file_path (str): Path to the file containing the saved loss tensor.
+        n_components (list): List of component counts corresponding to the rows of the loss tensor.
+    """
+    try:
+        # Load the saved loss tensor
+        loss_train_test_loaded = torch.load(file_path)
+
+        # Extract train and test losses
+        train_loss = loss_train_test_loaded[:, 0].tolist()  # First column: Train losses
+        test_loss = loss_train_test_loaded[:, 1].tolist()  # Second column: Test losses
+
+        # Plot train and test losses
+        plt.figure(figsize=(8, 6))
+        plt.plot(n_components, train_loss, label='Train Loss', marker='o')
+        plt.plot(n_components, test_loss, label='Test Loss', marker='o')
+        plt.xlabel('Number of Components')
+        plt.ylabel('Loss')
+        plt.title('Train and Test Loss vs. Number of Components')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+    except Exception as e:
+        print(f"Error: {e}")
+        print("Ensure the file path is correct and the tensor is properly formatted.")
+
+
+def plot_conditional_samples(gmm_model, n_samples_per_component=100, num_components=1, is_num_labels=False, epoch=1):
+    """
+    Display a scatter plot with samples from each Gaussian component, colored by component.
+
+    Args:
+        gmm_model (GMM): The Gaussian Mixture Model object.
+        n_samples_per_component (int): Number of samples to generate per Gaussian component.
+        :param epoch: epoch number
+        :param is_num_labels: if the number of labels is the number of components
+        :param n_samples_per_component: number of samples per component
+        :param gmm_model: The model
+        :param num_components: Number of components
+    """
+    all_samples = []
+    all_labels = []
+
+    # Loop through each Gaussian component
+    for component in range(gmm_model.n_components):
+        # Sample from the specific Gaussian component
+        samples = gmm_model.conditional_sample(n_samples_per_component, component)
+
+        # Append samples and labels
+        all_samples.append(samples)
+        all_labels.extend([component] * n_samples_per_component)  # Use component index as label
+
+    # Combine all samples into one tensor
+    all_samples = torch.cat(all_samples, dim=0)  # Shape: (n_samples_per_component * n_components, 2)
+    all_labels = np.array(all_labels)  # Convert labels to numpy array
+
+    # Convert samples to numpy for plotting
+    all_samples = all_samples.detach().numpy()
+
+    # Scatter plot with color-coding by component
+    plt.figure(figsize=(10, 8))
+    scatter = plt.scatter(all_samples[:, 0], all_samples[:, 1], c=all_labels, cmap='tab10', alpha=0.8, edgecolors='k')
+    # plt.colorbar(scatter, label="Gaussian Component")
+    if is_num_labels:
+        plt.title(f"Epoch {epoch}: {n_samples_per_component} Samples from Each of Gaussian Component, {num_components} in total")
+    else:
+        plt.title(f"{n_samples_per_component} Samples from Each of Gaussian Component, {num_components} in total")
+
+    plt.xlabel("Long")
+    plt.ylabel("Lat")
+    plt.grid(True)
+    plt.show()
+
+
+def plot_log_likelihood(train_log_likelihood, test_log_likelihood, num_epochs):
+    """
+    Plot the training and testing mean log likelihood vs. epoch.
+
+    Args:
+        train_log_likelihood (list): List of mean log likelihoods for each epoch during training.
+        test_log_likelihood (list): List of mean log likelihoods for each epoch during testing.
+        num_epochs (int): Total number of epochs.
+    """
+    epochs = list(range(1, num_epochs + 1))  # Epoch numbers
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(epochs, train_log_likelihood, label="Training Log-Likelihood", marker='o')
+    plt.plot(epochs, test_log_likelihood, label="Testing Log-Likelihood", marker='o')
+    plt.xlabel("Epoch")
+    plt.ylabel("Mean Log-Likelihood")
+    plt.title("Training and Testing Mean Log-Likelihood vs. Epoch")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
 # Example Usage
 if __name__ == "__main__":
     # log_probs = [
@@ -294,10 +413,12 @@ if __name__ == "__main__":
     #     torch.tensor([-2.5, -1.7]) ]  # Component 3
     # log_probs = torch.stack(log_probs, dim=1)  # Shape: (n_samples, n_components)
     # print(log_probs.shape)
-    t = torch.tensor([1, 2])
-    print(t.shape)
+    # t = torch.tensor([1, 2])
+    # print(t.shape)
 
     torch.manual_seed(42)
+    np.random.seed(42)
+
     train_dataset = EuropeDataset('train.csv')
     test_dataset = EuropeDataset('test.csv')
 
@@ -311,48 +432,119 @@ if __name__ == "__main__":
     # learning_rate for GMM = 0.01
     # learning_rate for UMM = 0.001
     
-    train_dataset.features = normalize_tensor(train_dataset.features, d=0)
+    train_dataset.features = dataset.normalize_tensor(train_dataset.features, d=0)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
-    test_dataset.features = normalize_tensor(test_dataset.features, d=0)
+
+    test_dataset.features = dataset.normalize_tensor(test_dataset.features, d=0)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     #### YOUR CODE GOES HERE ####
 
-    # Initialize the UMM model
-    n_components = [1, 5, 10, num_labels]
+    number_components = [1, 5, 10, num_labels]
 
     # Set the learning rate
-    learning_rate = 0.001
+    learning_rate_gmm = 0.01
+    learning_rate_umm = 0.001
 
     # Use the Adam optimizer
 
-    # Training loop
-    loss = None
-    for components in n_components:
-        total_loss = 0.0
+    loss_train_test = torch.zeros((len(number_components), NUMBER_OF_FEATURES))
+    for index,components in enumerate(number_components):
+
+        train_total_loss = 0.0
+        test_total_loss = 0.0
+
+        train_log_likelihood = []  # Reset log-likelihood tracker for training
+        test_log_likelihood = []  # Reset log-likelihood tracker for testing
+
         print(f"------------Number of components: {components}-----------------")
         gmm = GMM(components)
-        optimizer = torch.optim.Adam(gmm.parameters(), lr=learning_rate)
+        optimizer = torch.optim.Adam(gmm.parameters(), lr=learning_rate_gmm)
         for epoch in range(num_epochs):
-            epoch_loss = 0.0
-            number_of_batches = 0
-            batch_time = None
+            print(f"--------------Epoch {epoch + 1}-----------------")
+
+            train_epoch_loss = 0.0
+            test_epoch_loss = 0.0
+
+            train_number_of_batches = 0
+            test_number_of_batches = 0
+
+            train_log_likelihood_batches = []  # For tracking batch log-likelihoods
+            test_log_likelihood_batches = []  # For tracking batch log-likelihoods
+
+            # batch_time = None
+            # Training loop
             for batch in train_loader:
-                start_time = time.time()
+                # start_time = time.time()
                 features, _ = batch  # Assuming labels are not needed
+
                 epoch_log_likelihood = gmm(features)
+                train_log_likelihood_batches.append(epoch_log_likelihood)  # Track batch log-likelihood
                 loss = loss_function_gmm(epoch_log_likelihood)
                 optimizer.zero_grad()
                 loss.backward()
-                epoch_loss += loss.item()
+
+                train_epoch_loss += loss.item()
                 optimizer.step()
-                number_of_batches += 1
-                end_time = time.time()
-                batch_time = end_time - start_time
-            epoch_loss /= number_of_batches
-            total_loss += epoch_loss
-            print(f"Epoch {epoch + 1}/{num_epochs}, Time: {batch_time:.3f}s, "
-                  f"Loss: {loss.item():.4f}")
-        total_loss /= num_epochs
-        print(f"Loss for {components} components: {total_loss}")
+                train_number_of_batches += 1
+                # end_time = time.time()
+                # batch_time = end_time - start_time
+
+            # Compute mean log-likelihood for the epoch
+            train_epoch_log_likelihood_mean = torch.mean(torch.cat(train_log_likelihood_batches)).item()
+            train_log_likelihood.append(train_epoch_log_likelihood_mean)
+
+            train_epoch_loss /= train_number_of_batches
+            train_total_loss += train_epoch_loss
+
+            print(f"Train Loss: {train_epoch_loss:.4f}")
+            with torch.no_grad():
+                for batch in test_loader:
+                    # start_time = time.time()
+                    features, _ = batch
+
+                    epoch_log_likelihood = gmm(features)
+                    test_log_likelihood_batches.append(epoch_log_likelihood)  # Track batch log-likelihood
+                    loss = loss_function_gmm(epoch_log_likelihood)
+
+                    test_epoch_loss += loss.item()
+                    test_number_of_batches += 1
+
+                    # end_time = time.time()
+                    # batch_time = end_time - start_time
+
+                # Compute mean log-likelihood for the epoch
+                test_epoch_log_likelihood_mean = torch.mean(torch.cat(test_log_likelihood_batches)).item()
+                test_log_likelihood.append(test_epoch_log_likelihood_mean)
+
+                test_epoch_loss /= test_number_of_batches
+                test_total_loss += test_epoch_loss
+
+                print(f"Test Loss: {test_epoch_loss:.4f}")
+            if (epoch + 1) in EPOCHS and components == num_labels:
+                plot_gmm_samples(gmm, 1000, num_labels,True, epoch + 1)
+                plot_conditional_samples(gmm, 100, num_labels, True, epoch + 1)
+                plot_log_likelihood(train_log_likelihood, test_log_likelihood, epoch + 1)
+
+        # Average the losses across epochs
+        train_total_loss /= num_epochs
+        test_total_loss /= num_epochs
+        print(f"Train Loss for {components} components: {train_total_loss:.4f}")
+        print(f"Test Loss for {components} components: {test_total_loss:.4f}")
+
+        # Store results using idx for indexing
+        loss_train_test[index][0] = train_total_loss
+        loss_train_test[index][1] = test_total_loss
+
+
+        torch.save(gmm.state_dict(), 'gmm_model.pt')
+
+        plot_gmm_samples(gmm, 1000, components)
+        plot_conditional_samples(gmm, 100, components)
+
+    loss_train_test_transposed = loss_train_test.transpose(0, 1)
+    print(loss_train_test)
+    torch.save(loss_train_test, 'loss_train_test.pt')
+    plot_loss_from_file('loss_train_test.pt', [1, 5, 10, 'num_labels'])
+
 
 
