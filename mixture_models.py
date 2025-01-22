@@ -299,8 +299,8 @@ def plot_gmm_samples(gmm_model, n_samples=1000, n_components=1, is_num_labels=Fa
         plt.title(f"Epoch {epoch_number}: Scatter Plot of {n_samples} Samples from {n_components} components GMM")
     else:
         plt.title(f"Scatter Plot of {n_samples} Samples from {n_components} components GMM")
-    plt.xlabel("Feature 1")
-    plt.ylabel("Feature 2")
+    plt.xlabel("Long")
+    plt.ylabel("Lat")
     plt.grid(True)
     plt.show()
 
