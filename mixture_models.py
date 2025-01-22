@@ -1,27 +1,18 @@
-# import time
+from matplotlib.pyplot import inferno
 
-import torch.nn as nn
 import dataset
 from dataset import EuropeDataset
-import torch
-import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
 
 NUMBER_OF_FEATURES = 2
 EPOCHS = [1, 10, 20, 30, 40, 50]
 
-
-def loss_function_umm(log_likelihood):
-    """
-    Compute the negative log-likelihood loss.
-    Args:
-        log_likelihood (torch.Tensor): Log-likelihood of shape (n_samples,).
-
-    Returns:
-        torch.Tensor: Negative log-likelihood.
-    """
-    return -torch.mean(log_likelihood)
 
 
 class GMM(nn.Module):
@@ -180,16 +171,16 @@ def loss_function_gmm(log_likelihood):
     """
     return -torch.mean(log_likelihood)
 
-
 class UMM(nn.Module):
-    def __init__(self, n_components):
+    def __init__(self, n_components, n_features=2):
         """
         Uniform Mixture Model in 2D using PyTorch.
 
         Args:
             n_components (int): Number of uniform components.
+            n_features (int): Dimensionality of the data (default is 2).
         """
-        super().__init__()        
+        super().__init__()
         self.n_components = n_components
 
         # Mixture weights (logits to be soft maxed)
@@ -201,38 +192,56 @@ class UMM(nn.Module):
         # Log of size of the uniform components (n_components x 2 for 2D data)
         self.log_sizes = nn.Parameter(torch.log(torch.ones(n_components, 2) + torch.rand(n_components, 2)*0.2))
 
+
     def forward(self, X):
         """
         Compute the log-likelihood of the data.
         Args:
-            X (torch.Tensor): Input data of shape (n_samples, 2).
+            X (torch.Tensor): Input data of shape (n_samples, n_features).
 
         Returns:
             torch.Tensor: Log-likelihood of shape (n_samples,).
         """
-        # Ensure X is of shape (n_samples, 2)
-        assert X.shape[1] == 2
+        assert X.shape[1] == 2; "Input dimensionality mismatch."
 
-        # Calculate the mixture weights using softmax
-        log_weights = torch.log_softmax(self.weights, dim=0)  # Shape: (n_components,)
+        # Compute log p(k) (log mixture weights)
+        log_p_k = F.log_softmax(self.weights, dim=0)  # Shape: (n_components,)
 
-        # Calculate the log-probability of each component
-        log_probs = []
-        for i in range(self.n_components):
-            center = self.centers[i]  # Shape: (2,)
-            size = torch.exp(self.log_sizes[i])  # Shape: (2,)
-            lower_bound = center - size / 2
-            upper_bound = center + size / 2
-            within_bounds = torch.all((X >= lower_bound) & (X <= upper_bound), dim=1)
-            uniform_log_prob = -torch.log(size.prod())  # Log-probability of uniform distribution
-            log_prob = within_bounds * uniform_log_prob + (~within_bounds) * float('-inf')
-            log_probs.append(log_prob + log_weights[i])
+        # Compute log p(x|k) for each component
+        log_p_x_given_k = []
+        for k in range(self.n_components):
+            center_k = self.centers[k]  # Shape: (n_features,)
+            size_k = torch.exp(self.log_sizes[k])  # Ensure sizes are positive
 
-        # Stack log-probabilities and compute log-sum-exp
-        log_probs = torch.stack(log_probs, dim=1)  # Shape: (n_samples, n_components)
-        log_likelihood = torch.logsumexp(log_probs, dim=1)  # Shape: (n_samples,)
+            lower_bound = center_k - size_k / 2
+            upper_bound = center_k + size_k / 2
+            # Check if each sample is within the bounds of the k-th component
+            within_bounds = torch.all((X >= lower_bound) & (X <= upper_bound), dim=1)  # Shape: (n_samples,)
+            # Compute log p(x|k)
+            log_uniform_prob = -torch.log(size_k.prod() + 1e-11)
+            # print(log_uniform_prob.item())
+            # Avoid division by zero
+            # print(log_uniform_prob)
+            negative_penalty = -1e6
+            log_prob = within_bounds * log_uniform_prob + (~within_bounds) * negative_penalty
+            log_p_x_given_k.append(log_prob + log_p_k[k])  # Add log p(k)
+
+        # Combine log p(x|k) across all components using log-sum-exp
+        log_p_x_given_k = torch.stack(log_p_x_given_k, dim=1)  # Shape: (n_samples, n_components)
+        log_likelihood = torch.logsumexp(log_p_x_given_k, dim=1)  # Shape: (n_samples,)
 
         return log_likelihood
+
+    def loss_function(self, log_likelihood):
+        """
+        Compute the negative log-likelihood loss.
+        Args:
+            log_likelihood (torch.Tensor): Log-likelihood of shape (n_samples,).
+
+        Returns:
+            torch.Tensor: Negative log-likelihood.
+        """
+        return -torch.mean(log_likelihood)
 
     def sample(self, n_samples):
         """
@@ -241,21 +250,28 @@ class UMM(nn.Module):
             n_samples (int): Number of samples to generate.
 
         Returns:
-            torch.Tensor: Generated samples of shape (n_samples, 2).
+            torch.Tensor: Generated samples of shape (n_samples, n_features).
         """
-        # Sample component indices based on the mixture weights
-        weights = torch.softmax(self.weights, dim=0)
-        component_indices = torch.multinomial(weights, n_samples, replacement=True)
+        # Convert logits to probabilities
+        p_k = torch.softmax(self.weights, dim=0)  # Probabilities of components
+
+        # Sample component indices based on probabilities
+        component_indices = torch.multinomial(p_k, n_samples, replacement=True)  # Shape: (n_samples,)
 
         # Generate samples
         samples = []
-        for idx in component_indices:
-            center = self.centers[idx]
-            size = torch.exp(self.log_sizes[idx])
-            sample = center + (torch.rand(2) - 0.5) * size
+        for k in component_indices:
+            center_k = self.centers[k]
+            size_k = torch.exp(self.log_sizes[k])
+            lower_bound = center_k - size_k / 2
+            upper_bound = center_k + size_k / 2
+
+            # Use Uniform distribution to sample
+            uniform_dist = torch.distributions.Uniform(lower_bound, upper_bound)
+            sample = uniform_dist.sample()
             samples.append(sample)
 
-        return torch.stack(samples)
+        return torch.stack(samples)  # Shape: (n_samples, n_features)
 
     def conditional_sample(self, n_samples, label):
         """
@@ -265,12 +281,20 @@ class UMM(nn.Module):
             label (int): Component index.
 
         Returns:
-            torch.Tensor: Generated samples of shape (n_samples, 2).
+            torch.Tensor: Generated samples of shape (n_samples, n_features).
         """
-        center = self.centers[label]
-        size = torch.exp(self.log_sizes[label])
-        samples = center + (torch.rand(n_samples, 2) - 0.5) * size
+        center_k = self.centers[label]  # Shape: (n_features,)
+        size_k = torch.exp(self.log_sizes[label])  # Shape: (n_features,)
+
+        lower_bound = center_k - size_k / 2
+        upper_bound = center_k + size_k / 2
+
+        # Use Uniform distribution to sample
+        uniform_dist = torch.distributions.Uniform(lower_bound, upper_bound)
+        samples = uniform_dist.sample((n_samples,))  # Shape: (n_samples, n_features)
+
         return samples
+
 
 
 def plot_gmm_samples(gmm_model, n_samples=1000, n_components=1, is_num_labels=False, epoch_number=1):
@@ -450,6 +474,9 @@ if __name__ == "__main__":
     learning_rate_gmm = 0.01
     learning_rate_umm = 0.001
 
+    is_umm = True
+    # is_umm = False
+
     # Compute mean location for each class
     country_means = []
     for _label in range(num_labels):
@@ -459,9 +486,9 @@ if __name__ == "__main__":
 
     country_means = torch.stack(country_means)  # Shape: (num_labels, 2)
     loss_train_test = torch.zeros((len(number_components), NUMBER_OF_FEATURES))
-
+    model = "UMM" if is_umm else "GMM"
     for initialize_with_means in [False, True]:  # Train twice: random and country means
-        print(f"Training GMM with {'country means' if initialize_with_means else 'random initialization'}")
+        print(f"Training {model} with {'country means' if initialize_with_means else 'random initialization'}")
 
         for index,components in enumerate(number_components):
 
@@ -472,15 +499,18 @@ if __name__ == "__main__":
             test_log_likelihood = []  # Reset log-likelihood tracker for testing
 
             print(f"------------Number of components: {components}-----------------")
-
-            gmm = GMM(components)
+            if is_umm:
+                model = UMM(components)
+            else:
+                model = GMM(components)
 
             # Initialize means if specified
             if initialize_with_means and components == num_labels:
                 with torch.no_grad():
-                    gmm.means.copy_(country_means)
+                    model.means.copy_(country_means)
 
-            optimizer = torch.optim.Adam(gmm.parameters(), lr=learning_rate_gmm)
+            optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate_umm) if is_umm \
+                else torch.optim.Adam(model.parameters(), lr=learning_rate_gmm)
             for epoch in range(num_epochs):
                 print(f"--------------Epoch {epoch + 1}-----------------")
 
@@ -499,7 +529,7 @@ if __name__ == "__main__":
                     # start_time = time.time()
                     features, _ = batch  # Assuming labels are not needed
 
-                    epoch_log_likelihood = gmm(features)
+                    epoch_log_likelihood = model(features)
                     train_log_likelihood_batches.append(epoch_log_likelihood)  # Track batch log-likelihood
                     loss = loss_function_gmm(epoch_log_likelihood)
                     optimizer.zero_grad()
@@ -524,10 +554,9 @@ if __name__ == "__main__":
                         # start_time = time.time()
                         features, _ = batch
 
-                        epoch_log_likelihood = gmm(features)
+                        epoch_log_likelihood = model(features)
                         test_log_likelihood_batches.append(epoch_log_likelihood)  # Track batch log-likelihood
                         loss = loss_function_gmm(epoch_log_likelihood)
-
                         test_epoch_loss += loss.item()
                         test_number_of_batches += 1
 
@@ -543,8 +572,8 @@ if __name__ == "__main__":
 
                     print(f"Test Loss: {test_epoch_loss:.4f}")
                 if (epoch + 1) in EPOCHS and components == num_labels:
-                    plot_gmm_samples(gmm, 1000, num_labels,True, epoch + 1)
-                    plot_conditional_samples(gmm, 100, num_labels, True, epoch + 1)
+                    plot_gmm_samples(model, 1000, num_labels,True, epoch + 1)
+                    plot_conditional_samples(model, 100, num_labels, True, epoch + 1)
                     if epoch + 1 == num_epochs:
                         plot_log_likelihood(train_log_likelihood, test_log_likelihood, epoch + 1, _initialize_with_means=initialize_with_means)
 
@@ -561,13 +590,12 @@ if __name__ == "__main__":
 
             # torch.save(gmm.state_dict(), 'gmm_model.pt')
             if not initialize_with_means:
-                plot_gmm_samples(gmm, 1000, components)
-                plot_conditional_samples(gmm, 100, components)
+                plot_gmm_samples(model, 1000, components)
+                plot_conditional_samples(model, 100, components)
 
         loss_train_test_transposed = loss_train_test.transpose(0, 1)
         print(loss_train_test)
         torch.save(loss_train_test, 'loss_train_test.pt')
-        # plot_loss_from_file('loss_train_test.pt', [1, 5, 10, 'num_labels'])
 
 
 
