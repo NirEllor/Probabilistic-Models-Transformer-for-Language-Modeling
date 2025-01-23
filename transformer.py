@@ -182,15 +182,59 @@ def train_model(
             batch_size=batch_size,
         )
 
+    train_losses = []
+    train_accuracies = []
+    test_losses = []
+    test_accuracies = []
+
     for ep in range(epochs):
         model.train()
+        total_loss = 0
+        train_correct_predictions = 0
+        train_total_predictions = 0
+
         for i, batch in enumerate(tqdm(train_loader)):
             #### YOUR CODE HERE ####
-            pass
+            batch = batch.to(device)
+            targets = batch[:, 1:]
+            inputs = batch[:, :-1]
+            logits = model(inputs)
+            loss = criterion(logits.view(-1, vocab_size), targets.view(-1))
 
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+            last_char_logits = logits[:, -1, :]
+            predicted = torch.argmax(last_char_logits, dim=1)
+            train_correct_predictions += (predicted == targets[:, -1]).sum().item()
+            train_total_predictions += targets.size(0)
+
+        train_average_loss = total_loss / len(train_loader)
+        train_average_accuracy = train_correct_predictions / train_total_predictions
+        train_losses.append(train_average_loss)
+        train_accuracies.append(train_average_accuracy)
+
+        print(f"Epoch {ep + 1}: Train Accuracy: {train_average_accuracy:.4f}, Loss: {train_average_loss:.4f}")
         with torch.no_grad():
+            model.eval()
+            total_test_loss = 0
             for i, batch in enumerate(tqdm(test_loader)):
-                pass
+                batch = batch.to(device)
+
+                # Prepare inputs and targets
+                inputs = batch[:, :-1]
+                targets = batch[:, 1:]
+
+                # Forward pass
+                logits = model(inputs)
+
+                # Compute loss
+                loss = criterion(logits.view(-1, vocab_size), targets.view(-1))
+                total_test_loss += loss.item()
+
+            print(f"Test Loss: {total_test_loss / len(test_loader):.4f}")
 
             # Complete the sentence:
             sentence = "the "
