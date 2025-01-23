@@ -253,15 +253,16 @@ def train_model(
 
 
             # Complete the sentence:
-            sentence = "the "
+            sentence="the "
             for i in range(3):
                 new_sentence = sentence
                 for i in range(20):
-                    tokens = torch.tensor(data_handler.encoder(sentence[-block_size:]))[None]
-                    #### YOUR CODE GOES HERE ####
+                        tokens = torch.tensor(data_handler.encoder(sentence[-block_size:]))[None]
+                        #### YOUR CODE GOES HERE ####
                 print('new_sentence: ', new_sentence)
 
-            # Comple the sentence only considering the top k characters when sampling:
+
+            # Complete the sentence only considering the top k characters when sampling:
             for i in range(3):
                 for i in range(20):
                     tokens = torch.tensor(data_handler.encoder(sentence[-block_size:]))[None]
