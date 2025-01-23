@@ -95,7 +95,6 @@ class GMM(nn.Module):
                             + ((X[:, 1] - mean_k[1]) ** 2) / var_k[1]  # (x2 - μ_k2)^2 / σ_k2^2
                     )
             )  # Shape: (n_samples,)
-
             log_p_x_given_k.append(component_log_prob)
 
         # Stack the log-conditionals for all components
