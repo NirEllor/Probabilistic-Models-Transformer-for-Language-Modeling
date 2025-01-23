@@ -88,8 +88,8 @@ class GMM(nn.Module):
             # Compute log p(x|k) for all samples
             component_log_prob = (
                     - torch.log(torch.tensor(2 * torch.pi))  # Constant term
-                    - torch.log(var_k[0])  # log(σ_k1^2)
-                    - torch.log(var_k[1])  # log(σ_k2^2)
+                    - torch.log(torch.sqrt(var_k[0]))  # log(σ_k1^2)
+                    - torch.log(torch.sqrt(var_k[1]))  # log(σ_k2^2)
                     - 0.5 * (
                             ((X[:, 0] - mean_k[0]) ** 2) / var_k[0]  # (x1 - μ_k1)^2 / σ_k1^2
                             + ((X[:, 1] - mean_k[1]) ** 2) / var_k[1]  # (x2 - μ_k2)^2 / σ_k2^2
@@ -473,8 +473,8 @@ if __name__ == "__main__":
     learning_rate_gmm = 0.01
     learning_rate_umm = 0.001
 
-    is_umm = True
-    # is_umm = False
+    # is_umm = True
+    is_umm = False
 
     # Compute mean location for each class
     country_means = []

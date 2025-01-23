@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+import numpy as np
 from utils import NewGELU
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
