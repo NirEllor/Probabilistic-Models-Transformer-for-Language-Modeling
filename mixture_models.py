@@ -1,5 +1,3 @@
-from matplotlib.pyplot import inferno
-
 import dataset
 from dataset import EuropeDataset
 import matplotlib.pyplot as plt
@@ -171,14 +169,26 @@ def loss_function_gmm(log_likelihood):
     """
     return -torch.mean(log_likelihood)
 
+
+def loss_function(log_likelihood):
+    """
+    Compute the negative log-likelihood loss.
+    Args:
+        log_likelihood (torch.Tensor): Log-likelihood of shape (n_samples,).
+
+    Returns:
+        torch.Tensor: Negative log-likelihood.
+    """
+    return -torch.mean(log_likelihood)
+
+
 class UMM(nn.Module):
-    def __init__(self, n_components, n_features=2):
+    def __init__(self, n_components):
         """
         Uniform Mixture Model in 2D using PyTorch.
 
         Args:
             n_components (int): Number of uniform components.
-            n_features (int): Dimensionality of the data (default is 2).
         """
         super().__init__()
         self.n_components = n_components
@@ -231,17 +241,6 @@ class UMM(nn.Module):
         log_likelihood = torch.logsumexp(log_p_x_given_k, dim=1)  # Shape: (n_samples,)
 
         return log_likelihood
-
-    def loss_function(self, log_likelihood):
-        """
-        Compute the negative log-likelihood loss.
-        Args:
-            log_likelihood (torch.Tensor): Log-likelihood of shape (n_samples,).
-
-        Returns:
-            torch.Tensor: Negative log-likelihood.
-        """
-        return -torch.mean(log_likelihood)
 
     def sample(self, n_samples):
         """
@@ -507,7 +506,11 @@ if __name__ == "__main__":
             # Initialize means if specified
             if initialize_with_means and components == num_labels:
                 with torch.no_grad():
-                    model.means.copy_(country_means)
+                    if is_umm:
+                        model.centers.copy_(country_means)
+                    else:
+                        model.means.copy_(country_means)
+
 
             optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate_umm) if is_umm \
                 else torch.optim.Adam(model.parameters(), lr=learning_rate_gmm)
