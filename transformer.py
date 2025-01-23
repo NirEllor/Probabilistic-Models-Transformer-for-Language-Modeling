@@ -61,7 +61,7 @@ class CausalSelfAttention(nn.Module):
         # Re-Assemble all head outputs side by side. Expected shape [batch_side, sequence_length, n_embd]
 
         # output projection
-        B, T, C = x.size()
+        B, T, C = x.size()  # shapes of X
         qkv = self.qkv(x)  # Shape: [B, T, 3 * n_embd]
         q, k, v = torch.chunk(qkv, 3, dim=-1)  # Split into q, k, v, each with shape: [B, T, n_embd]
 
@@ -71,11 +71,13 @@ class CausalSelfAttention(nn.Module):
 
         scores = (q @ k.transpose(-1, -2)) / math.sqrt(k.size(-1))  # Shape: [B, n_h, T, T]
         scores = scores.masked_fill(self.mask[:, :, :T, :T] == 0, -float('inf'))  # Shape: [B, n_h, T, T]
-        attention = torch.softmax(scores, dim=-1) @ v  # Shape: [B, n_h, T, T]
+
+        attention = torch.softmax(scores, dim=-1)  # Shape: [B, n_h, T, T]
+        attention = attention @ v # Shape: [B, n_h, T, d_k]
         attention = attention.transpose(1, 2).contiguous().view(B, T, C)  # Shape: [B, T, n_embd]
         attention = self.proj(attention)  # Shape: [B, T, n_embd]
 
-        return
+        return attention
 
 
 class Block(nn.Module):
