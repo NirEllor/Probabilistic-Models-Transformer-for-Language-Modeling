@@ -1,7 +1,6 @@
 import math
 import torch
 import torch.nn as nn
-from torch.nn.functional import linear
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 from dataset import DataHandler
@@ -12,7 +11,7 @@ class NewGELU(nn.Module):
     Implementation of the GELU activation function currently in Google BERT repo (identical to OpenAI GPT).
     Reference: Gaussian Error Linear Units (GELU) paper: https://arxiv.org/abs/1606.08415
     """
-
+    @staticmethod
     def forward(self, x):
         return 0.5 * x * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * torch.pow(x, 3.0))))
 
@@ -29,10 +28,10 @@ class CausalSelfAttention(nn.Module):
         self.block_size = block_size
         #### YOUR CODE HERE ####
         # TIP:
-        # It is common practive to initialze a single Linear layer to map each token to its query, key, and value, i.e. nn.Linear(self.n_embd, 3 * self.n_embd)
+        # It is common proactive to initialize a single Linear layer to map each token to its query, key, and value, i.e. nn.Linear(self.n_embd, 3 * self.n_embd)
         # After applying the linear layer on a token embedding you can split the layer's output to key, query, and value
         # The output key/query/value is of dimension n_embd, in practice this includes the embeddings for all heads,
-        # therefore, embedding = [embd_1, embd_2, .. embd_nheads]. You can rearange as you please in the forward pass.
+        # therefore, embedding = [embd_1, embd_2, ... embd_n heads]. You can rearrange as you please in the forward pass.
 
         # Linear layer to compute query, key, and value in a single operation
         self.qkv = nn.Linear(n_embd, 3 * n_embd)
@@ -162,21 +161,22 @@ def train_model(
     criterion = nn.CrossEntropyLoss()
     print('Using device:', device)
 
-    trainset = data_handler.get_dataset('train')
-    testset = data_handler.get_dataset('test')
+    train_set = data_handler.get_dataset('train')
+    test_set = data_handler.get_dataset('test')
 
-    # setup the dataloader
+    # set up the dataloader
     train_loader = DataLoader(
-        trainset,
-        sampler=torch.utils.data.RandomSampler(trainset, replacement=True, num_samples=int(1e5)),
+        train_set,
+        sampler=torch.utils.data.RandomSampler(train_set, replacement=True, num_samples=int(1e5)),
         shuffle=False,
         pin_memory=True,
         batch_size=batch_size,
     )
-    if testset:
+    test_loader = None
+    if test_set:
         test_loader = DataLoader(
-            testset,
-            sampler=torch.utils.data.RandomSampler(testset, replacement=False, num_samples=int(1e4)),
+            test_set,
+            sampler=torch.utils.data.RandomSampler(test_set, replacement=False, num_samples=int(1e4)),
             shuffle=False,
             pin_memory=True,
             batch_size=batch_size,
@@ -218,7 +218,6 @@ def train_model(
         train_accuracies.append(train_average_accuracy)
 
         print(f"Epoch {ep + 1}: Train Accuracy: {train_average_accuracy:.4f}, Train Loss: {train_average_loss:.4f}")
-
         with torch.no_grad():
             model.eval()
             test_total_loss = 0
