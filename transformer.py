@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 from dataset import DataHandler
-
+import matplotlib.pyplot as plt
 
 class NewGELU(nn.Module):
     """
@@ -12,7 +12,7 @@ class NewGELU(nn.Module):
     Reference: Gaussian Error Linear Units (GELU) paper: https://arxiv.org/abs/1606.08415
     """
     @staticmethod
-    def forward(self, x):
+    def forward(x):
         return 0.5 * x * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * torch.pow(x, 3.0))))
 
 
@@ -148,7 +148,9 @@ def train_model(
         n_embd=48,
         learning_rate=3e-4,
         batch_size=64,
-        epochs=10
+        epochs=10,
+        losses_accuracies_path="losses_accuracies.pt"
+
 ):
     data_handler = DataHandler(train_path, test_path, block_size)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -195,10 +197,8 @@ def train_model(
 
         for i, batch in enumerate(tqdm(train_loader)):
             #### YOUR CODE HERE ####
-            batch = batch.to(device)
-            targets = batch[:, 1:]
-            inputs = batch[:, :-1]
-            inputs, targets = inputs.to(device), targets.to(device)
+            inputs, targets = batch
+            inputs.long().to(device), targets.long().to(device)
             logits = model(inputs)
             loss = criterion(logits.view(-1, vocab_size), targets.view(-1))
 
@@ -217,19 +217,15 @@ def train_model(
         train_losses.append(train_average_loss)
         train_accuracies.append(train_average_accuracy)
 
-        print(f"Epoch {ep + 1}: Train Accuracy: {train_average_accuracy:.4f}, Train Loss: {train_average_loss:.4f}")
+        print(f"\nEpoch {ep + 1}: Train Accuracy: {train_average_accuracy:.4f}, Train Loss: {train_average_loss:.4f}")
+        model.eval()
         with torch.no_grad():
-            model.eval()
             test_total_loss = 0
             test_correct_predictions = 0
             test_total_predictions = 0
             for i, batch in enumerate(tqdm(test_loader)):
-                batch = batch.to(device)
-
-                # Prepare inputs and targets
-                inputs = batch[:, :-1]
-                targets = batch[:, 1:]
-                inputs, targets = inputs.to(device), targets.to(device)
+                inputs, targets = batch
+                inputs.long().to(device), targets.long().to(device)
 
                 # Forward pass
                 logits = model(inputs)
@@ -248,28 +244,93 @@ def train_model(
             test_losses.append(test_average_loss)
             test_accuracies.append(test_average_accuracy)
 
-            print(f"Epoch {ep + 1}: Test Accuracy: {test_average_accuracy:.4f}, Test Loss: {test_average_loss:.4f}")
+            print(f"\nEpoch {ep + 1}: Test Accuracy: {test_average_accuracy:.4f}, Test Loss: {test_average_loss:.4f}")
 
 
             # Complete the sentence:
+            print("\nGenerating sentences without top-5 sampling:")
             sentence="the "
             for i in range(3):
                 new_sentence = sentence
-                for i in range(20):
-                        tokens = torch.tensor(data_handler.encoder(sentence[-block_size:]))[None]
-                        #### YOUR CODE GOES HERE ####
-                print('new_sentence: ', new_sentence)
+                for _ in range(30):
+                        tokens = torch.tensor(data_handler.encoder(new_sentence[-block_size:])).unsqueeze(0).to(device)
+                        logits = model(tokens)
+                        probs = torch.softmax(logits[0, -1, :], dim=-1)
+                        next_token = torch.multinomial(probs, 1).item()
+                        new_sentence += data_handler.decoder([next_token])
+                print(f'Generated sentence {i + 1}:', new_sentence)
+
+            # Complete the sentence using top-k sampling
+            print("\nGenerating sentences with top-5 sampling:")
+            top_k = 5  # Consider the top 5 tokens
+            # sentence = "the "
+            for i in range(3):  # Generate 3 sentences
+                new_sentence = sentence
+                for _ in range(30):  # Generate 20 tokens per sentence
+                    tokens = torch.tensor(data_handler.encoder(new_sentence[-block_size:])).unsqueeze(0).to(device)
+                    logits = model(tokens)
+                    probs = torch.softmax(logits[0, -1, :], dim=-1)
+
+                    top_probs, top_indices = torch.topk(probs, top_k)  # Top-k probabilities and indices
+                    top_probs = top_probs / top_probs.sum(dim=-1, keepdim=True)  # Normalize probabilities
+                    next_token = top_indices[torch.multinomial(top_probs, 1)].item()  # Sample from the top-k probabilities
+                    new_sentence += data_handler.decoder([next_token])  # Append the sampled token
+                print(f'Generated sentence {i + 1}:', new_sentence)
+
+    # Save the model after training
+    # Save the model and metrics
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'train_losses': train_losses,
+        'train_accuracies': train_accuracies,
+        'test_losses': test_losses,
+        'test_accuracies': test_accuracies
+    }, losses_accuracies_path)
+    print(f"Model and metrics saved to {losses_accuracies_path}")
+    return train_losses, train_accuracies, test_losses, test_accuracies
 
 
-            # Complete the sentence only considering the top k characters when sampling:
-            for i in range(3):
-                for i in range(20):
-                    tokens = torch.tensor(data_handler.encoder(sentence[-block_size:]))[None]
-                    #### YOUR CODE GOES HERE ####
+def plot_losses_accuracies(saved_data_path="losses_accuracies.pt"):
+    # Load saved data
+    saved_data = torch.load(saved_data_path)
+    train_losses = saved_data['train_losses']
+    train_accuracies = saved_data['train_accuracies']
+    test_losses = saved_data['test_losses']
+    test_accuracies = saved_data['test_accuracies']
 
+    # Plotting
+    fig, (loss, accuracy) = plt.subplots(1, 2, figsize=(12, 5))
+
+    epochs = range(1, len(train_losses) + 1)
+
+    # Accuracy plot
+    accuracy.plot(epochs, train_accuracies, 'b-', label='Training Accuracy')
+    accuracy.plot(epochs, test_accuracies, 'r-', label='Testing Accuracy')
+    accuracy.set_title('Accuracies')
+    accuracy.set_xlabel('Epoch')
+    accuracy.set_ylabel('Accuracy')
+    accuracy.legend()
+    # Loss plot
+    loss.plot(epochs, train_losses, 'b-', label='Training Loss')
+    loss.plot(epochs, test_losses, 'r-', label='Testing Loss')
+    loss.set_title('Losses')
+    loss.set_xlabel('Epoch')
+    loss.set_ylabel('Loss')
+    loss.legend()
+
+
+
+    plt.tight_layout()
+    plt.show()
+
+    print(f"Final Training Loss: {train_losses[-1]:.4f}")
+    print(f"Final Testing Loss: {test_losses[-1]:.4f}")
+    print(f"Final Training Accuracy: {train_accuracies[-1]:.4f}")
+    print(f"Final Testing Accuracy: {test_accuracies[-1]:.4f}")
 
 if __name__ == "__main__":
     torch.manual_seed(42)
-    train_model('train.txt', 'test.txt')
+    train_model('train_shakespeare.txt', 'test_shakespeare.txt')
+    plot_losses_accuracies()
 
 
